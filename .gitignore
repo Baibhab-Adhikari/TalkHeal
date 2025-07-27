@@ -249,3 +249,6 @@ env/
 
 # JSON files
 *.json
+
+# .db files
+*.db
