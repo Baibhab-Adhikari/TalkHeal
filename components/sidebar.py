@@ -4,7 +4,8 @@ from datetime import datetime
 from core.utils import create_new_conversation, get_current_time
 from core.theme import get_current_theme, toggle_theme, set_palette, PALETTES
 from components.profile import initialize_profile_state, render_profile_section
-
+from streamlit_js_eval import streamlit_js_eval
+import requests
 
 # --- Structured Emergency Resources ---
 GLOBAL_RESOURCES = [
@@ -19,6 +20,69 @@ GLOBAL_RESOURCES = [
     {"name": "Child Helpline International", "desc": "A global network of child helplines for young people in need of help.",
      "url": "https://www.childhelplineinternational.org/"}
 ]
+
+
+def get_country_from_coords(lat, lon):
+    try:
+        url = f"https://geocode.maps.co/reverse?lat={lat}&lon={lon}"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("address", {}).get("country_code", "").upper()
+    except:
+        pass
+    return None
+
+def get_user_country():
+    # 1. Try to get user's actual browser location (via JS)
+    coords = streamlit_js_eval(
+        js_expressions="""
+            new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    position => resolve({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    }),
+                    error => resolve(null)
+                );
+            });
+        """,
+        key="get_coords"
+    )
+
+    if coords and "latitude" in coords and "longitude" in coords:
+        country = get_country_from_coords(coords["latitude"], coords["longitude"])
+        if country:
+            return country
+
+    # 2. Fallback to IP-based location using ipapi.co (no key required)
+    try:
+        resp = requests.get("https://ipapi.co/json/", timeout=3)
+        if resp.status_code == 200:
+            return resp.json().get("country_code", "").upper()
+    except:
+        pass
+
+    return None  # final fallback if everything fails
+
+country_helplines = {
+    "US": [
+        "National Suicide Prevention Lifeline: 988",
+        "Crisis Text Line: Text HOME to 741741",
+        "SAMHSA National Helpline: 1-800-662-4357"
+    ],
+    "IN": [
+        "AASRA: 9152987821",
+        "Sneha Foundation: 044-24640050"
+    ],
+    "GB": [
+        "Samaritans: 116 123"
+    ],
+    "AU": [
+        "Lifeline: 13 11 14"
+    ]
+}
+IASP_LINK = "https://findahelpline.com/"
 
 mental_health_resources_full = {
     "Depression & Mood Disorders": {
@@ -76,12 +140,17 @@ mental_health_resources_full = {
 
 def render_sidebar():
     """Renders the left and right sidebars."""
-     
+    
     with st.sidebar:
-        # === PROFILE SECTION (Now imported from profile.py) ===
         render_profile_section()
-    with st.sidebar:
+
+        st.markdown("### 📂 Explore")
+        st.page_link("pages/Journaling.py", label="📝 Journaling", use_container_width=True)
+        st.page_link("pages/Yoga.py", label="🧘 Yoga", use_container_width=True)
+        st.markdown("---")
+
         st.markdown("### 💬 Conversations")
+
         if "show_quick_start_prompts" not in st.session_state:
             st.session_state.show_quick_start_prompts = False
         if "pre_filled_chat_input" not in st.session_state:
@@ -93,6 +162,7 @@ def render_sidebar():
             create_new_conversation()
             st.session_state.show_quick_start_prompts = True
             st.rerun()
+
         if st.session_state.show_quick_start_prompts:
             st.markdown("---")
             st.markdown("**Start with a common topic:**")
@@ -113,6 +183,7 @@ def render_sidebar():
 
             st.markdown("---")
 
+
         if st.session_state.conversations:
             if "delete_candidate" not in st.session_state:
                 for i, convo in enumerate(st.session_state.conversations):
@@ -130,9 +201,19 @@ def render_sidebar():
                             st.session_state.active_conversation = i
                             st.rerun()
                     with col2:
-                        if st.button("🗑️", key=f"delete_{i}", type="primary"):
-                            st.session_state.delete_candidate = i
-                            st.rerun()
+                        if convo["messages"]:
+                            if st.button("🗑️", key=f"delete_{i}", type="primary", use_container_width=True):
+                                st.session_state.delete_candidate = i
+                                st.rerun()
+                        else:
+                                st.button(
+                                "🗑️",
+                                key=f"delete_{i}",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=not convo["messages"]  # Disable if it's a new/empty conversation
+                            )
+
 
             else:
                 st.warning(
@@ -303,6 +384,21 @@ def render_sidebar():
             for resource in GLOBAL_RESOURCES:
                 st.markdown(
                     f"**{resource['name']}**: {resource['desc']} [Visit Website]({resource['url']})")
+            
+            # Provide localized helplines based on user's country
+            user_country = get_user_country()
+            country_label = user_country if user_country else "your country"
+            st.markdown("### 🚨 Emergency Help")
+            if user_country and user_country in country_helplines:
+                st.markdown(f"**Helplines for {country_label}:**")
+                for line in country_helplines[user_country]:
+                    st.markdown(f"• {line}")
+            else:
+                st.markdown(
+                    f"Couldn't detect a local helpline for {country_label}. [Find help worldwide via IASP]({IASP_LINK})"
+                )
+
+            st.markdown("---")
 
         # Theme toggle in sidebar
         with st.expander("🎨 Theme Settings"):

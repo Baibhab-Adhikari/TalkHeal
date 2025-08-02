@@ -4,5 +4,6 @@ google-generativeai
 geopy
 requests
 Pillow
-sqlalchemy
+streamlit-lottie
 bcrypt
+streamlit_js_eval

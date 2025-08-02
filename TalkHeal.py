@@ -1,12 +1,48 @@
 import streamlit as st
+from auth.auth_utils import init_db
+from components.login_page import show_login_page
 
-# ✅ MUST be the first Streamlit command
-st.set_page_config(
-    page_title="TalkHeal",
-    page_icon="💬",
-    layout="wide",
-    initial_sidebar_state=st.session_state.get("sidebar_state", "expanded")
-)
+st.set_page_config(page_title="TalkHeal", page_icon="💬", layout="wide")
+
+# --- DB Initialization ---
+if "db_initialized" not in st.session_state:
+    init_db()
+    st.session_state["db_initialized"] = True
+
+# --- Auth State Initialization ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "show_signup" not in st.session_state:
+    st.session_state.show_signup = False
+
+# --- LOGIN PAGE ---
+if not st.session_state.authenticated:
+    show_login_page()
+    st.stop()
+
+# --- TOP RIGHT BUTTONS: THEME TOGGLE & LOGOUT ---
+if st.session_state.get("authenticated", False):
+    col_spacer, col_theme, col_logout = st.columns([5, 0.5, 0.7])
+    with col_spacer:
+        pass  # empty spacer to push buttons right
+    with col_theme:
+        is_dark = st.session_state.get('dark_mode', False)
+        if st.button("🌙" if is_dark else "☀️", key="top_theme_toggle", help="Toggle Light/Dark Mode", use_container_width=True):
+            st.session_state.dark_mode = not is_dark
+            st.session_state.theme_changed = True
+            st.rerun()
+    with col_logout:
+        if st.button("Logout", key="logout_btn", use_container_width=True):
+            for key in ["authenticated", "user_email", "user_name", "show_signup"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+
+# --- MAIN UI (only after login) ---
+header_col1, header_col2, header_col3 = st.columns([6, 1, 1])
+with header_col1:
+    st.title(f"Welcome to TalkHeal, {st.session_state.user_name}! 💬")
+    st.markdown("Navigate to other pages from the sidebar.")
 
 import google.generativeai as genai
 from core.utils import save_conversations, load_conversations
@@ -95,7 +131,11 @@ if st.session_state.get("show_emergency_page"):
 else:
     with main_area:
         render_header()
-        st.subheader(f"🗣️ Current Chatbot Tone: **{st.session_state['selected_tone']}**")
+        st.markdown(f"""
+<div style="text-align: center; margin: 20px 0;">
+    <h3>🗣️ Current Chatbot Tone: <strong>{st.session_state['selected_tone']}</strong></h3>
+</div>
+""", unsafe_allow_html=True)
         render_chat_interface()
         handle_chat_input(model, system_prompt=get_tone_prompt())
 
@@ -110,4 +150,20 @@ st.markdown("""
     }
     setTimeout(scrollToBottom, 100);
 </script>
-""", unsafe_allow_html=True) 
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+header[data-testid="stHeader"] button {
+    font-size: 14px !important;
+    border-radius: 50% !important;
+    padding: 0.5em !important;
+    width: 40px !important;
+    height: 40px !important;
+}
+header[data-testid="stHeader"] span, header[data-testid="stHeader"] div {
+    font-size: 16px !important;
+    overflow: hidden !important;
+}
+</style>
+""", unsafe_allow_html=True)
